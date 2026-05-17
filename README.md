@@ -76,6 +76,9 @@ ykv2mp4 --version
 ```powershell
 # 最简单的用法
 ykv2mp4 video.ykv
+
+# 或者用 python -m 的方式（如果 ykv2mp4 命令找不到）
+python -m ykv2mp4 video.ykv
 ```
 
 工具会自动查找 ffmpeg，提取所有视频分片，合并成 `video.mp4`。
@@ -89,6 +92,9 @@ ykv2mp4 video.ykv
 ```powershell
 # 直接转（输出到同目录）
 ykv2mp4 电影.ykv
+
+# 或者用 python -m 方式
+python -m ykv2mp4 电影.ykv
 
 # 指定输出路径
 ykv2mp4 电影.ykv -o E:/成品/电影.mp4
@@ -156,7 +162,7 @@ ykv2mp4 [选项] <YKV文件...>
 
 ### "找不到 ffmpeg"
 
-- 如果只装了一个 YKV 文件且只有 1 个分片，仍然能转成功
+- 如果文件只有 1 个分片，不需要 ffmpeg 也能转成功
 - 如果有多个分片，需要装 ffmpeg（参考上面的第三步）
 - 或者用 `--no-merge` 只提取分片
 
