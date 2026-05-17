@@ -80,20 +80,20 @@ def gather_ykv_files(paths: List[str]) -> List[Path]:
     files: List[Path] = []
     for p in paths:
         # 先尝试 glob 展开（处理通配符）
-        expanded = sorted(glob_mod.glob(p, recursive=True))
+        expanded = sorted(glob_mod.glob(p, recursive=True), key=str.lower)
         if expanded:
             for matched in expanded:
                 path = Path(matched)
                 if path.is_file() and path.suffix.lower() == ".ykv":
                     files.append(path.resolve())
                 elif path.is_dir():
-                    files.extend(sorted(Path(path).rglob("*.ykv")))
+                    files.extend(sorted(Path(path).rglob("*.ykv"), key=lambda x: str(x).lower()))
         else:
             path = Path(p)
             if path.is_file() and path.suffix.lower() == ".ykv":
                 files.append(path.resolve())
             elif path.is_dir():
-                files.extend(sorted(Path(path).rglob("*.ykv")))
+                files.extend(sorted(Path(path).rglob("*.ykv"), key=lambda x: str(x).lower()))
     return files
 
 
@@ -189,8 +189,11 @@ def main():
 
     if not has_ffmpeg:
         logger.warning(
-            "未找到 ffmpeg，多分片文件将无法合并。"
-            "请安装 ffmpeg 或通过 --ffmpeg 指定路径。"
+            "未检测到 ffmpeg。如果 YKV 文件包含多个视频分片，将无法合并。\n"
+            "解决方案：\n"
+            "  1) 安装 ffmpeg 并加入 PATH\n"
+            "  2) 通过 --ffmpeg 指定路径：ykv2mp4 video.ykv --ffmpeg D:/ffmpeg/bin/ffmpeg.exe\n"
+            "  3) 使用 --no-merge 仅提取分片不合并：ykv2mp4 video.ykv --no-merge"
         )
 
     converter = YKVConverter(ffmpeg_path=ffmpeg_path if has_ffmpeg else "ffmpeg")

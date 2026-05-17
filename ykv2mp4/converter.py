@@ -7,11 +7,11 @@ YKV 文件本质上是多个标准 MP4 分片简单拼接而成。
 再调用 ffmpeg 无损合并为完整 MP4。
 """
 
-import os
 import subprocess
 import logging
+import shutil
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 logger = logging.getLogger("ykv2mp4")
 
@@ -196,8 +196,8 @@ class YKVConverter:
         logger.info("提取完成: %d 个分片", len(segment_files))
 
         if len(segment_files) == 1:
-            # 只有一个分片，直接拷贝即可
-            Path(segment_files[0]).replace(output_path)
+            # 只有一个分片，直接拷贝（用 copy2 保留 keep_segments 的效果）
+            shutil.copy2(segment_files[0], output_path)
             logger.info("单分片，直接拷贝 → %s", output_path)
         else:
             # 多个分片，用 ffmpeg 合并
@@ -205,7 +205,6 @@ class YKVConverter:
 
         # 4. 清理
         if not keep_segments:
-            import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
             logger.info("清理临时目录: %s", temp_dir)
 
