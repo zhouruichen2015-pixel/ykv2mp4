@@ -14,7 +14,10 @@ YKV 是优酷的私有格式，但其实只是把多个标准 MP4 片段简单�
 pip install ykv2mp4
 
 # 或者克隆仓库直接运行
-git clone https://github.com/YOUR_USERNAME/ykv2mp4.git
+pip install git+https://github.com/zhouruichen2015-pixel/ykv2mp4.git
+
+# 或者克隆仓库
+git clone https://github.com/zhouruichen2015-pixel/ykv2mp4.git
 cd ykv2mp4
 pip install .
 ```
