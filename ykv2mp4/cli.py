@@ -166,13 +166,31 @@ def main():
     # 收集 YKV 文件
     files = gather_ykv_files(args.input)
     if not files:
+        # 检测是否因未加引号导致路径被空格截断
+        hint = ""
+        if len(args.input) > 1:
+            rejoined = " ".join(args.input)
+            if Path(rejoined).exists():
+                # 空格拆分的路径存在，确认是忘了加引号
+                hint = (
+                    "\n⚠️ 路径中含有空格且被拆分成多个参数，需要用引号包裹：\n"
+                    f'  ykv2mp4 "{rejoined}"'
+                )
+            elif any(c in " ".join(args.input) for c in (" ", "　")):
+                # 路径中有空格但不一定能拼回去（用户可能手动改了参数）
+                hint = (
+                    "\n💡 如果路径包含空格，请用引号包裹：\n"
+                    '  ykv2mp4 "D:/我的视频/第1期 电影.ykv"'
+                )
         logger.error(
-            "未找到任何 .ykv 文件。"
-            "请确认路径正确，例如：\n"
+            "未找到任何 .ykv 文件。%s"
+            "\n请确认路径正确，例如：\n"
             "  ykv2mp4 video.ykv                    # 当前目录下的文件\n"
             "  ykv2mp4 D:/videos/video.ykv           # 指定绝对路径\n"
+            '  ykv2mp4 "D:/我的视频/第1期 电影.ykv"   # 路径含空格时加引号\n'
             "  ykv2mp4 D:/videos/*.ykv               # 使用通配符\n"
-            "  ykv2mp4 D:/videos/                    # 扫描整个目录"
+            "  ykv2mp4 D:/videos/                    # 扫描整个目录",
+            hint,
         )
         sys.exit(1)
 
