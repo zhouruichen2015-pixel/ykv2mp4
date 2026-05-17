@@ -202,6 +202,13 @@ class YKVConverter:
         # 2. 扫描 ftyp 标记定位分片
         offsets = find_ftyp_offsets(data)
         if not offsets:
+            # 检查文件头，判断是不是新版 YKV 格式
+            if data[:2] == b"YK":
+                raise ValueError(
+                    f"该文件是优酷新版 YKV 格式（YK\" 容器），非旧版 ftyp 拼接格式，"
+                    f"当前工具暂不支持。\n"
+                    f"建议使用优酷客户端直接播放，或搜索商业转码工具。"
+                )
             raise ValueError(f"未找到任何 MP4 分片 (ftyp 标记): {ykv_path}")
         logger.info("发现 %d 个 MP4 分片", len(offsets))
 
