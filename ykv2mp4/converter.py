@@ -195,18 +195,19 @@ class YKVConverter:
         segment_files = extract_segments(data, offsets, temp_dir)
         logger.info("提取完成: %d 个分片", len(segment_files))
 
-        if len(segment_files) == 1:
-            # 只有一个分片，直接拷贝（用 copy2 保留 keep_segments 的效果）
-            shutil.copy2(segment_files[0], output_path)
-            logger.info("单分片，直接拷贝 → %s", output_path)
-        else:
-            # 多个分片，用 ffmpeg 合并
-            merge_segments(segment_files, output_path, self.ffmpeg_path)
-
-        # 4. 清理
-        if not keep_segments:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            logger.info("清理临时目录: %s", temp_dir)
+        try:
+            if len(segment_files) == 1:
+                # 只有一个分片，直接拷贝（用 copy2 保留 keep_segments 的效果）
+                shutil.copy2(segment_files[0], output_path)
+                logger.info("单分片，直接拷贝 → %s", output_path)
+            else:
+                # 多个分片，用 ffmpeg 合并
+                merge_segments(segment_files, output_path, self.ffmpeg_path)
+        finally:
+            # 4. 清理（即使转换失败也要清理 temp 目录）
+            if not keep_segments:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                logger.info("清理临时目录: %s", temp_dir)
 
         return str(output_path.resolve())
 

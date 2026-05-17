@@ -94,6 +94,9 @@ def gather_ykv_files(paths: List[str]) -> List[Path]:
                 files.append(path.resolve())
             elif path.is_dir():
                 files.extend(sorted(Path(path).rglob("*.ykv"), key=lambda x: str(x).lower()))
+            else:
+                logger = logging.getLogger("ykv2mp4")
+                logger.warning("路径不匹配任何文件或目录，已跳过: %s", p)
     return files
 
 
@@ -203,8 +206,9 @@ def main():
         ykv = files[0]
 
         if args.no_merge:
-            out_dir = Path(args.output) if args.output else ykv.parent
-            run_no_merge(ykv, Path(out_dir))
+            # --no-merge 产生多个分片，输出到以 ykv 文件名命名的子目录
+            out_dir = ykv.parent / ykv.stem
+            run_no_merge(ykv, out_dir)
             return
 
         out_path = args.output or None  # None = 自动生成
