@@ -44,11 +44,16 @@ def setup_logging(verbose: bool = False):
 def check_ffmpeg(ffmpeg_path: str) -> bool:
     """检测 ffmpeg 是否可用。"""
     import shutil
-    resolved = shutil.which(ffmpeg_path) or (
-        Path(ffmpeg_path).resolve() if Path(ffmpeg_path).exists() else None
-    )
-    if resolved:
+
+    # 1. 在 PATH 中查找
+    if shutil.which(ffmpeg_path):
         return True
+
+    # 2. 指定的绝对路径且是个文件
+    p = Path(ffmpeg_path)
+    if p.is_file():
+        return True
+
     return False
 
 
@@ -65,14 +70,30 @@ def find_ffmpeg_in_youku() -> Optional[str]:
 
 
 def gather_ykv_files(paths: List[str]) -> List[Path]:
-    """收集要转换的 YKV 文件（支持通配符后的展开）。"""
+    """收集要转换的 YKV 文件。
+    
+    Windows PowerShell/Cmd 不会自动展开通配符（如 *.ykv），
+    所以需要手动用 glob 展开。
+    """
+    import glob as glob_mod
+
     files: List[Path] = []
     for p in paths:
-        path = Path(p)
-        if path.is_file() and path.suffix.lower() == ".ykv":
-            files.append(path.resolve())
-        elif path.is_dir():
-            files.extend(sorted(Path(path).rglob("*.ykv")))
+        # 先尝试 glob 展开（处理通配符）
+        expanded = sorted(glob_mod.glob(p, recursive=True))
+        if expanded:
+            for matched in expanded:
+                path = Path(matched)
+                if path.is_file() and path.suffix.lower() == ".ykv":
+                    files.append(path.resolve())
+                elif path.is_dir():
+                    files.extend(sorted(Path(path).rglob("*.ykv")))
+        else:
+            path = Path(p)
+            if path.is_file() and path.suffix.lower() == ".ykv":
+                files.append(path.resolve())
+            elif path.is_dir():
+                files.extend(sorted(Path(path).rglob("*.ykv")))
     return files
 
 
@@ -142,7 +163,14 @@ def main():
     # 收集 YKV 文件
     files = gather_ykv_files(args.input)
     if not files:
-        logger.error("未找到任何 .ykv 文件")
+        logger.error(
+            "未找到任何 .ykv 文件。"
+            "请确认路径正确，例如：\n"
+            "  ykv2mp4 video.ykv                    # 当前目录下的文件\n"
+            "  ykv2mp4 D:/videos/video.ykv           # 指定绝对路径\n"
+            "  ykv2mp4 D:/videos/*.ykv               # 使用通配符\n"
+            "  ykv2mp4 D:/videos/                    # 扫描整个目录"
+        )
         sys.exit(1)
 
     logger.info("找到 %d 个 YKV 文件", len(files))

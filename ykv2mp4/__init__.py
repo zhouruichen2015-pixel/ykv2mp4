@@ -5,7 +5,6 @@ ykv2mp4 — 优酷 YKV 视频无损转 MP4 工具
 """
 
 __version__ = "0.1.0"
-__author__ = "Your Name"
 __license__ = "MIT"
 
 from .converter import YKVConverter, find_ftyp_offsets, extract_segments
