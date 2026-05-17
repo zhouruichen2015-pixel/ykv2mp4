@@ -1,0 +1,250 @@
+# ============================================================================
+# ykv2mp4 — GitHub Actions 自动转换工作流
+#
+# 用法:
+#   1. Fork 本仓库
+#   2. 将 .ykv 文件推送到仓库的 ykv-input/ 目录
+#   3. 前往 Actions → "YKV → MP4 Converter" → Run workflow
+#   4. 自动转换完成后，下载 Artifact 或发布到 Release
+# ============================================================================
+
+name: YKV → MP4 Converter
+
+on:
+  # 手动触发（最常用）
+  workflow_dispatch:
+    inputs:
+      ykv_source:
+        description: "YKV 文件来源"
+        required: true
+        default: "ykv-input"
+        type: choice
+        options:
+          - "ykv-input"          # 从仓库 ykv-input/ 目录读取
+          - "latest-release"     # 从最新 Release 读取
+          - "custom-path"        # 自定义路径
+      custom_path:
+        description: "自定义 YKV 路径（仅 custom-path 模式）"
+        required: false
+        type: string
+      output_format:
+        description: "输出格式"
+        required: true
+        default: "artifact"
+        type: choice
+        options:
+          - "artifact"     # 上传为 Actions Artifact
+          - "release"      # 发布到 GitHub Release
+          - "both"         # 两者都要
+      keep_segments:
+        description: "保留中间分片文件"
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: "Release 标签名（release 模式必填）"
+        required: false
+        type: string
+
+  # 推送 YKV 文件时自动触发
+  push:
+    paths:
+      - "ykv-input/**/*.ykv"
+      - "ykv-input/**/*.YKV"
+
+  # 发布 Release 时触发
+  release:
+    types: [published]
+
+# 防止同一工作流多次运行冲突
+concurrency:
+  group: ykv-convert-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  convert:
+    name: YKV → MP4
+    runs-on: ubuntu-latest
+
+    steps:
+      # ----------------------------------------
+      # 1. 检出代码
+      # ----------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # ----------------------------------------
+      # 2. 安装 ffmpeg
+      # ----------------------------------------
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version
+
+      # ----------------------------------------
+      # 3. 设置 Python
+      # ----------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install ykv2mp4
+        run: |
+          pip install .
+
+      # ----------------------------------------
+      # 4. 收集 YKV 文件
+      # ----------------------------------------
+      - name: Gather YKV files
+        id: gather
+        shell: python
+        run: |
+          import os, glob, json
+          from pathlib import Path
+
+          source = "${{ github.event.inputs.ykv_source || 'ykv-input' }}"
+          files = []
+
+          if source == "latest-release" or "${{ github.event_name }}" == "release":
+              # 从 Release 下载
+              import urllib.request
+              api_url = "${{ github.api_url }}/repos/${{ github.repository }}/releases/latest"
+              import json as j
+              with urllib.request.urlopen(api_url) as resp:
+                  release = j.loads(resp.read())
+              for asset in release.get("assets", []):
+                  if asset["name"].lower().endswith(".ykv"):
+                      print(f"Downloading {asset['name']}...")
+                      urllib.request.urlretrieve(
+                          asset["browser_download_url"],
+                          f"ykv_inputs/{asset['name']}"
+                      )
+                      files.append(f"ykv_inputs/{asset['name']}")
+              os.makedirs("ykv_inputs", exist_ok=True)
+
+          elif source == "custom-path":
+              custom = "${{ github.event.inputs.custom_path }}"
+              for f in glob.glob(custom, recursive=True):
+                  if f.lower().endswith(".ykv"):
+                      files.append(f)
+
+          else:  # ykv-input
+              for f in glob.glob("ykv-input/**/*.ykv", recursive=True):
+                  files.append(f)
+              for f in glob.glob("ykv-input/**/*.YKV", recursive=True):
+                  files.append(f)
+
+          # fallback: also scan release assets
+          if "${{ github.event_name }}" == "release" and not files:
+              import urllib.request
+              release_url = "${{ github.event.release.assets_url }}"
+              with urllib.request.urlopen(release_url) as resp:
+                  assets = json.loads(resp.read())
+              os.makedirs("ykv_inputs", exist_ok=True)
+              for asset in assets:
+                  if asset["name"].lower().endswith(".ykv"):
+                      urllib.request.urlretrieve(asset["browser_download_url"], f"ykv_inputs/{asset['name']}")
+                      files.append(f"ykv_inputs/{asset['name']}")
+
+          # 输出文件列表
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"file_count={len(files)}\n")
+              f.write(f"file_list={json.dumps(files)}\n")
+
+          if not files:
+              print("⚠️ 未找到任何 YKV 文件")
+          else:
+              for f in files:
+                  print(f"  📦 {f}")
+
+      # ----------------------------------------
+      # 5. 执行转换
+      # ----------------------------------------
+      - name: Convert YKV → MP4
+        if: steps.gather.outputs.file_count != '0'
+        id: convert
+        run: |
+          mkdir -p output
+          FILES_JSON='${{ steps.gather.outputs.file_list }}'
+          echo "$FILES_JSON" | python -c "
+          import json, os, sys
+
+          files = json.loads(sys.stdin.read())
+          from ykv2mp4.converter import YKVConverter
+
+          converter = YKVConverter(ffmpeg_path='ffmpeg')
+          keep = '${{ github.event.inputs.keep_segments }}' == 'true'
+
+          results = []
+          for f in files:
+              f = f.strip()
+              if not f:
+                  continue
+              out_name = os.path.splitext(os.path.basename(f))[0] + '.mp4'
+              out_path = os.path.join('output', out_name)
+              try:
+                  result = converter.convert(f, output_path=out_path, keep_segments=keep)
+                  results.append(result)
+                  print(f'✅ {os.path.basename(f)} → {out_name}')
+              except Exception as e:
+                  print(f'❌ {os.path.basename(f)} — {e}')
+
+          # 输出结果
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'mp4_count={len(results)}\n')
+              f.write(f'mp4_list={json.dumps(results)}\n')
+          "
+
+      # ----------------------------------------
+      # 6. 上传 Artifact
+      # ----------------------------------------
+      - name: Upload MP4 as Artifact
+        if: >
+          steps.gather.outputs.file_count != '0' &&
+          (github.event.inputs.output_format == 'artifact' ||
+           github.event.inputs.output_format == 'both' ||
+           github.event_name == 'push')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ykv-converted-mp4
+          path: output/*.mp4
+          compression-level: 0  # MP4 已经压缩，不二次压缩
+          if-no-files-found: warn
+
+      # ----------------------------------------
+      # 7. 发布到 Release
+      # ----------------------------------------
+      - name: Upload MP4 to Release
+        if: >
+          steps.gather.outputs.file_count != '0' &&
+          (github.event.inputs.output_format == 'release' ||
+           github.event.inputs.output_format == 'both' ||
+           github.event_name == 'release')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag || github.event.release.tag_name }}
+        run: |
+          for mp4 in output/*.mp4; do
+            echo "上传 $mp4 → Release $TAG"
+            gh release upload "$TAG" "$mp4" --clobber
+          done
+
+      # ----------------------------------------
+      # 8. 完成总结
+      # ----------------------------------------
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 📊 转换结果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 项目 | 数值 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| YKV 文件数 | ${{ steps.gather.outputs.file_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| MP4 输出数 | ${{ steps.convert.outputs.mp4_count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ 转换完成！" >> $GITHUB_STEP_SUMMARY
