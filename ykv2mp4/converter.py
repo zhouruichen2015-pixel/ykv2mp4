@@ -93,8 +93,22 @@ def merge_segments(
 
     Returns:
         合并后文件的绝对路径
+
+    Raises:
+        RuntimeError: ffmpeg 未找到或执行失败
     """
     output_path = Path(output_path).resolve()
+
+    # 检查 ffmpeg 是否存在
+    ffmpeg = shutil.which(ffmpeg_path) or (
+        Path(ffmpeg_path).resolve() if Path(ffmpeg_path).is_file() else None
+    )
+    if not ffmpeg:
+        raise RuntimeError(
+            f"找不到 ffmpeg（已查找: {ffmpeg_path}）。"
+            f"请安装 ffmpeg 或通过 --ffmpeg 参数指定路径。"
+            f"如果不想合并，可以使用 --no-merge 仅提取分片。"
+        )
 
     # 生成 ffmpeg concat file list
     list_dir = output_path.parent

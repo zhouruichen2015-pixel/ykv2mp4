@@ -212,6 +212,14 @@ def main():
             return
 
         out_path = args.output or None  # None = 自动生成
+
+        # 防止 -o 给的是目录路径（以 / 或 \ 结尾，或已存在的目录）
+        if out_path:
+            p = Path(out_path)
+            if out_path.rstrip().endswith(("\\", "/")) or p.is_dir():
+                out_path = str(p / ykv.with_suffix(".mp4").name)
+                logger.info("输出路径是目录，自动拼接文件名: %s", out_path)
+
         try:
             result = converter.convert(
                 ykv,
@@ -225,7 +233,9 @@ def main():
 
     # 批量转换
     else:
-        out_dir = args.output_dir or args.output or "./converted"
+        # 批量模式下 -o 作为目录使用，去掉可能误给的扩展名
+        raw_dir = args.output_dir or args.output or "./converted"
+        out_dir = Path(raw_dir).with_suffix("") if Path(raw_dir).suffix else Path(raw_dir)
         Path(out_dir).mkdir(parents=True, exist_ok=True)
 
         success = 0
